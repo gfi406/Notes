@@ -1,0 +1,256 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Записки";
+}
+
+<div class="container mt-4">
+    <h1>Список записок</h1>
+
+    <div class="mb-3">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createNoteModal">
+            Создать новую записку
+        </button>
+    </div>
+
+    <div id="notesContainer" class="row">
+        
+        <div class="col-12">
+            <div class="alert alert-info">Загрузка записок...</div>
+        </div>
+    </div>
+    
+    <div class="modal fade" id="createNoteModal" tabindex="-1" aria-labelledby="createNoteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createNoteModalLabel">Создать новую записку</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="newNoteText" class="form-label">Текст записки</label>
+                        <textarea class="form-control" id="newNoteText" rows="5" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="saveNewNote">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <div class="modal fade" id="editNoteModal" tabindex="-1" aria-labelledby="editNoteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editNoteModalLabel">Редактировать записку</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editNoteId">
+                    <div class="mb-3">
+                        <label for="editNoteText" class="form-label">Текст записки</label>
+                        <textarea class="form-control" id="editNoteText" rows="5" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="updateNote">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        
+        function loadNotes() {
+            fetch('/api/Note')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Не удалось загрузить записки');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const notesContainer = document.getElementById('notesContainer');
+                    notesContainer.innerHTML = '';
+
+                    if (data.length === 0) {
+                        notesContainer.innerHTML = '<div class="col-12"><div class="alert alert-info">Записок не найдено. Создайте первую записку!</div></div>';
+                        return;
+                    }
+
+                    data.forEach(note => {
+                        const noteDate = new Date(note.updatedAt || note.createdAt).toLocaleString();
+                        const noteElement = document.createElement('div');
+                        noteElement.className = 'col-md-4 mb-4';
+                        noteElement.innerHTML = `
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">Записка ${note.id.substring(0, 8)}...</h5>
+                                    <p class="card-text note-text">${escapeHtml(note.text)}</p>
+                                    <p class="card-text"><small class="text-muted">Последнее обновление: ${noteDate}</small></p>
+                                    <div class="d-flex justify-content-between">
+                                        <button class="btn btn-warning edit-note" data-id="${note.id}" data-text="${escapeHtml(note.text)}">Изменить</button>
+                                        <button class="btn btn-danger delete-note" data-id="${note.id}">Удалить</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        notesContainer.appendChild(noteElement);
+                    });
+
+                   
+                    setupEventListeners();
+                })
+                .catch(error => {
+                    console.error('Ошибка при загрузке записок:', error);
+                    document.getElementById('notesContainer').innerHTML = `
+                        <div class="col-12">
+                            <div class="alert alert-danger">Ошибка при загрузке записок: ${error.message}</div>
+                        </div>
+                    `;
+                });
+        }
+
+        
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        
+        function setupEventListeners() {
+            
+            document.querySelectorAll('.edit-note').forEach(button => {
+                button.addEventListener('click', function() {
+                    const noteId = this.getAttribute('data-id');
+                    const noteText = this.getAttribute('data-text').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&');
+
+                    document.getElementById('editNoteId').value = noteId;
+                    document.getElementById('editNoteText').value = noteText;
+
+                    const editModal = new bootstrap.Modal(document.getElementById('editNoteModal'));
+                    editModal.show();
+                });
+            });
+
+           
+            document.querySelectorAll('.delete-note').forEach(button => {
+                button.addEventListener('click', function() {
+                    const noteId = this.getAttribute('data-id');
+                    if (confirm('Вы уверены, что хотите удалить эту записку?')) {
+                        deleteNote(noteId);
+                    }
+                });
+            });
+        }
+
+        
+        function createNote(text) {
+            fetch('/api/Note', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text: text })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Не удалось создать записку');
+                }
+                return response.json();
+            })
+            .then(() => {
+                loadNotes();
+                const modal = bootstrap.Modal.getInstance(document.getElementById('createNoteModal'));
+                modal.hide();
+                document.getElementById('newNoteText').value = '';
+            })
+            .catch(error => {
+                console.error('Ошибка при создании записки:', error);
+                alert(`Ошибка при создании записки: ${error.message}`);
+            });
+        }
+
+       
+        function updateNote(id, text) {
+            fetch(`/api/Note/id?id=${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: id, text: text })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Не удалось обновить записку');
+                }
+                return response.json();
+            })
+            .then(() => {
+                loadNotes();
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editNoteModal'));
+                modal.hide();
+            })
+            .catch(error => {
+                console.error('Ошибка при обновлении записки:', error);
+                alert(`Ошибка при обновлении записки: ${error.message}`);
+            });
+        }
+
+        
+        function deleteNote(id) {
+            fetch(`/api/Note/id?id=${id}`, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Не удалось удалить записку');
+                }
+                loadNotes();
+            })
+            .catch(error => {
+                console.error('Ошибка при удалении записки:', error);
+                alert(`Ошибка при удалении записки: ${error.message}`);
+            });
+        }
+
+       
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            loadNotes();
+
+            
+            document.getElementById('saveNewNote').addEventListener('click', function() {
+                const text = document.getElementById('newNoteText').value.trim();
+                if (text) {
+                    createNote(text);
+                } else {
+                    alert('Пожалуйста, введите текст записки');
+                }
+            });
+
+           
+            document.getElementById('updateNote').addEventListener('click', function() {
+                const id = document.getElementById('editNoteId').value;
+                const text = document.getElementById('editNoteText').value.trim();
+                if (text) {
+                    updateNote(id, text);
+                } else {
+                    alert('Пожалуйста, введите текст записки');
+                }
+            });
+        });
+    </script>
+
+}
