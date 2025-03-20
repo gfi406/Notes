@@ -2,6 +2,7 @@ using Notes;
 using Microsoft.EntityFrameworkCore;
 using Notes.Services;
 using Notes.Services.Implementation;
+using Notes.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,8 +29,13 @@ using (var scope = app.Services.CreateScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     try
     {
+        dbContext.Database.Migrate();
         dbContext.Database.CanConnect();
+
         Console.WriteLine("Connection is Ok");
+
+        var initializer = new DatabaseInitializer(dbContext);
+        await initializer.InitializeAsync();
 
     }
     catch (Exception ex)
@@ -41,11 +47,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseSwagger();
 app.UseSwaggerUI();
-//app.UseSwaggerUI(options =>
-//{
-//    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Notes");
-//    options.RoutePrefix = string.Empty; 
-//});
+
 
 
 app.UseHttpsRedirection();

@@ -10,5 +10,7 @@ namespace Notes
 
         public DbSet<Note> Notes { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder) { }
+
+        
     }
 }
